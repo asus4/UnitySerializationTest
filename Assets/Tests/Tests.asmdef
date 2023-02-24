@@ -5,6 +5,7 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "Unity.Collections",
+        "Unity.Mathematics",
         "Unity.PerformanceTesting",
         "Unity.Serialization"
     ],
