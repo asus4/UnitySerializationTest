@@ -27,18 +27,13 @@ public class PerformanceTest
     public void SerializeAndDeserializeTest()
     {
         var data = new TestData();
-
         using var serialized = data.Serialize(Allocator.Temp);
-        Debug.Log($"Serialized size: {serialized.Length} bytes");
-
         var deserialized = TestData.Deserialize(serialized);
-        Debug.Log($"Deserialized: {deserialized}");
-
         Assert.IsTrue(data.Equals(deserialized));
     }
 
     [Test, Performance]
-    public void UnitySerializeTest()
+    public void SerializeTest()
     {
         var data = new TestData();
 
@@ -73,6 +68,9 @@ public class TestData : IEquatable<TestData>
     public Mode mode = Mode.A;
     public byte[] bytes = new byte[1000];
 
+
+    private static readonly UnsafeAppendBuffer s_Stream = new(16, 8, Allocator.Persistent);
+
     public bool Equals(TestData other)
     {
         if (other is null) return false;
@@ -89,20 +87,24 @@ public class TestData : IEquatable<TestData>
 
     public unsafe NativeArray<byte> Serialize(Allocator allocator)
     {
-        using var stream = new UnsafeAppendBuffer(16, 8, Allocator.Temp);
-        BinarySerialization.ToBinary(&stream, this);
-
-        var result = new NativeArray<byte>(stream.Length, allocator);
-        UnsafeUtility.MemCpy(result.GetUnsafePtr(), stream.Ptr, stream.Length);
-        return result;
+        fixed (UnsafeAppendBuffer* stream = &s_Stream)
+        {
+            BinarySerialization.ToBinary(stream, this);
+            var result = new NativeArray<byte>(stream->Length, allocator);
+            UnsafeUtility.MemCpy(result.GetUnsafePtr(), stream, stream->Length);
+            return result;
+        }
     }
 
     public static unsafe TestData Deserialize(NativeArray<byte> data)
     {
-        using var stream = new UnsafeAppendBuffer(8, 8, Allocator.Temp);
-        stream.Add(data.GetUnsafePtr(), data.Length);
-        var reader = stream.AsReader();
-        return BinarySerialization.FromBinary<TestData>(&reader);
+        s_Stream.Reset();
+        fixed (UnsafeAppendBuffer* stream = &s_Stream)
+        {
+            stream->Add(data.GetUnsafePtr(), data.Length);
+            var reader = stream->AsReader();
+            return BinarySerialization.FromBinary<TestData>(&reader);
+        }
     }
 
     public override string ToString()
